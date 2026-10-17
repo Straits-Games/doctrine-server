@@ -1,0 +1,44 @@
+# systemd unit for a plain (non-Docker) install on Linux.
+#
+#   sudo useradd --system --home /var/lib/doctrine-server --shell /usr/sbin/nologin doctrine
+#   sudo mkdir -p /opt/doctrine-server /var/lib/doctrine-server
+#   sudo chown doctrine:doctrine /var/lib/doctrine-server
+#   sudo python3 -m venv /opt/doctrine-server/venv
+#   sudo /opt/doctrine-server/venv/bin/pip install "doctrine-server[discord]"   # or a git checkout
+#   sudo cp .env.example /etc/doctrine-server.env   # edit it; chmod 600, owned by root
+#   sudo cp deploy/doctrine-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now doctrine-server
+#   journalctl -u doctrine-server -f
+
+[Unit]
+Description=Doctrine dedicated server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=doctrine
+Group=doctrine
+EnvironmentFile=/etc/doctrine-server.env
+Environment=DOCTRINE_DATA_DIR=/var/lib/doctrine-server
+WorkingDirectory=/var/lib/doctrine-server
+ExecStart=/opt/doctrine-server/venv/bin/doctrine-server serve
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/doctrine-server
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

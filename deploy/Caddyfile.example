@@ -1,0 +1,16 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# Replace the hostname, point its DNS at this machine and open ports 80 + 443.
+# Then set DOCTRINE_PUBLIC_URL=https://doctrine.example.org in the server's env.
+
+doctrine.example.org {
+	encode gzip
+
+	# Allow the largest upload (custom scenarios, 32 MB by default) plus headroom.
+	request_body {
+		max_size 40MB
+	}
+
+	# Caddy sends X-Forwarded-For; the server trusts it from 127.0.0.1 by default
+	# (DOCTRINE_FORWARDED_ALLOW_IPS). With Docker, use "doctrine-server:8080" here.
+	reverse_proxy 127.0.0.1:8080
+}

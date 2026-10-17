@@ -1,0 +1,49 @@
+# Quick start:
+#   cp .env.example .env    # then edit it (at least DOCTRINE_JOIN_CODE or the Discord keys)
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Data (database, turn files, custom scenarios) lives in the named volume
+# "doctrine-data". Admin commands and backups (see docs/OPERATING.md):
+#   docker compose exec doctrine-server doctrine-server players list
+#   docker compose exec doctrine-server doctrine-server backup /data/backups/latest
+
+services:
+  doctrine-server:
+    build: .
+    image: doctrine-server:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed inside the container; these win over the same names in .env.
+      DOCTRINE_HOST: 0.0.0.0
+      DOCTRINE_PORT: "8080"
+      DOCTRINE_DATA_DIR: /data
+    ports:
+      # Plain HTTP. For internet play put HTTPS in front (see README) and change this
+      # to "127.0.0.1:8080:8080" so only the proxy can reach it.
+      - "8080:8080"
+    volumes:
+      - doctrine-data:/data
+
+  # Optional: Caddy in front for automatic HTTPS. Uncomment, point your DNS name at
+  # this machine, open ports 80/443, put your domain in deploy/Caddyfile.example
+  # (reverse_proxy doctrine-server:8080) and set in .env:
+  #   DOCTRINE_PUBLIC_URL=https://your.domain
+  #   DOCTRINE_FORWARDED_ALLOW_IPS=*   (only safe when port 8080 is not published)
+  #
+  # caddy:
+  #   image: caddy:2
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./deploy/Caddyfile.example:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
+  #   depends_on:
+  #     - doctrine-server
+
+volumes:
+  doctrine-data:
+  # caddy_data:
