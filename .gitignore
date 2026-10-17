@@ -1,0 +1,25 @@
+# virtualenvs
+.venv/
+venv/
+
+# server data (database, turn files, scenarios) and local settings
+data/
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
