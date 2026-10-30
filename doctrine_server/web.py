@@ -97,6 +97,13 @@ def _set_cookie(request: Request, response, nonce: str) -> None:
                         secure=_cfg(request).public_url.startswith("https://"), path="/")
 
 
+def _research_card(cfg) -> str:
+    """The research notice (research mode only)."""
+    if not cfg.research:
+        return ""
+    return f'<div class="card"><h2>Game records</h2><p>{html.escape(cfg.research_notice_text)}</p></div>'
+
+
 # ---------------------------------------------------------------- landing
 
 @router.get("/", response_class=HTMLResponse)
@@ -107,6 +114,7 @@ def landing(request: Request):
     body = f"""
 <p>This is a Doctrine dedicated server.</p>
 {motd}
+{_research_card(cfg)}
 <div class="card">
 <p>In <strong>Doctrine</strong> choose <strong>Multiplayer &gt; Dedicated Server</strong>
 and enter this address:</p>
@@ -156,6 +164,8 @@ def _link_page(request: Request, user_code: str, nonce: str, error: str = "",
         parts.append(f'<div class="card error"><p>{html.escape(error)}</p></div>')
     if cfg.motd:
         parts.append(f'<div class="card"><p>{html.escape(cfg.motd)}</p></div>')
+    if cfg.research:
+        parts.append(_research_card(cfg))
     parts.append(f"""<div class="card"><h2>Sign in to play</h2>
 <p>Doctrine is asking to link to this server with the code:</p>
 <p class="code">{html.escape(shown)}</p>

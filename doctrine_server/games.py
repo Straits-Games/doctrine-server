@@ -32,6 +32,7 @@ _FILENAME_BAD = re.compile(r"[^A-Za-z0-9._-]")
 _SUFFIX_ALPHABET = string.ascii_lowercase + string.digits
 STATUSES = ("active", "resigned", "finished", "closed")
 SUMMARY_MAX = 500
+CLIENT_VERSION_MAX = 32
 
 
 def valid_scenario_id(value) -> bool:
@@ -295,6 +296,7 @@ def upload_turn(conn: sqlite3.Connection, data_dir: Path, game_id: str, player_i
     if turn is None or new_active is None:
         raise ApiError(400, "bad_meta")
     summary = _clean_text(meta.get("summary"), SUMMARY_MAX)
+    client_version = _clean_text(meta.get("client_version"), CLIENT_VERSION_MAX)
 
     with db.tx(conn):
         game, side = game_for_player(conn, game_id, player_id)
@@ -323,8 +325,8 @@ def upload_turn(conn: sqlite3.Connection, data_dir: Path, game_id: str, player_i
         t = auth.now()
         conn.execute(
             "INSERT INTO turns (game_id, turn, recipient, uploader, filename, summary, size,"
-            " uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (game_id, turn, recipient, side, stored_name, summary, len(data), t))
+            " uploaded_at, client_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (game_id, turn, recipient, side, stored_name, summary, len(data), t, client_version))
         # 6. hand the move over. 7. NO cursor changes here (that was deadlock #3).
         new_turn = max(game["turn"], turn)
         conn.execute("UPDATE games SET active_side = ?, turn = ?, updated_at = ? WHERE game_id = ?",

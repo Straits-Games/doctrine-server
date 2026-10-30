@@ -124,10 +124,11 @@ for non-participants.
 ### `POST /games/{game_id}/turn` (auth, participant) — upload a turn file
 `multipart/form-data` with two parts:
 
-- `meta`: JSON `{"turn": N, "active_side": S, "scenario_id": "...", "summary": "..."}`
-  where `active_side` is the side to move **after** this file is loaded (the
-  recipient) and `summary` is fog-safe text (kept up to 500 characters, shown in
-  notifications);
+- `meta`: JSON `{"turn": N, "active_side": S, "scenario_id": "...", "summary": "...",
+  "client_version": "x.y.z"}` where `active_side` is the side to move **after** this
+  file is loaded (the recipient), `summary` is fog-safe text (kept up to 500
+  characters, shown in notifications) and the optional `client_version` is the game
+  build that wrote the file (kept up to 32 characters, for research exports);
 - `file`: the opaque, encrypted turn file, with a filename such as
   `rhine_t02_s1.hexturn`.
 
@@ -204,8 +205,12 @@ newest file (older files are kept for games that reference them). **200** `{"ok"
 
 ### `GET /server-info`
 **200** `{"name": "...", "version": "x.y.z", "protocol": 1, "motd": "...",
-"auth": ["local", "discord"], "discord_invite": "..."}` — `auth` lists the enabled
-sign-in methods; `discord_invite` only when configured.
+"auth": ["local", "discord"], "discord_invite": "...", "research": {"notice": "..."}}` —
+`auth` lists the enabled sign-in methods; `discord_invite` only when configured;
+`research` only in research mode (`DOCTRINE_RESEARCH`, server 0.2.0+), with the notice
+the game shows on its Dedicated Server screen. The research records themselves are
+served by the operator's telemetry listener, which is not part of this protocol (see
+`docs/OPERATING.md`).
 
 ### `GET /`
 A small HTML page explaining how to connect.

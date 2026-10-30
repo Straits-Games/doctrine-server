@@ -82,6 +82,10 @@ All settings are environment variables (or lines in `.env`). See
 | `DOCTRINE_SERVER_NAME` | `Doctrine server` | shown on the sign-in pages and `/server-info` |
 | `DOCTRINE_JOIN_CODE` | (empty) | enables local accounts; required to *create* one (not to sign in again) |
 | `DOCTRINE_MOTD` | (empty) | message on the sign-in page |
+| `DOCTRINE_RESEARCH` | off | research mode: tell players this server keeps game records for AI research, and allow `export-games` and the telemetry listener (see [docs/OPERATING.md](docs/OPERATING.md#research-mode-and-the-telemetry-port)) |
+| `DOCTRINE_RESEARCH_NOTICE` | (a standard notice) | the research notice shown in the game and on the sign-in page |
+| `DOCTRINE_RESEARCH_HOST` / `DOCTRINE_RESEARCH_PORT` | `127.0.0.1` / `0` (off) | the telemetry listener's bind address and port: your own network only, never the public proxy |
+| `DOCTRINE_RESEARCH_TOKEN` | (empty) | bearer token the telemetry listener requires (at least 16 characters) |
 | `DOCTRINE_MAX_TURN_MB` / `DOCTRINE_MAX_SCENARIO_MB` | `8` / `32` | upload caps (HTTP 413 above) |
 | `DOCTRINE_FORWARDED_ALLOW_IPS` | `127.0.0.1` | proxies trusted to send `X-Forwarded-For` (`*` = any) |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | (empty) | enable "Sign in with Discord" |
@@ -106,6 +110,7 @@ doctrine-server keys revoke <name|id>         # signs out all of a player's devi
 doctrine-server games list [--all]
 doctrine-server games close <game_id>
 doctrine-server backup <empty-folder>
+doctrine-server export-games <folder>         # research mode: game records
 doctrine-server version
 ```
 
@@ -124,7 +129,10 @@ Running a server means you hold other people's data. What this server stores:
 Turn files are encrypted with a per-game passphrase, but **the server holds that
 passphrase** (it hands it to both players), so the operator could technically decrypt
 them. Players should only use servers run by people they trust. Nothing is sent to
-Straits Games or any third party, except Discord when you enable the plugin. Tell your
+Straits Games or any third party, except Discord when you enable the plugin. Research
+mode tells your players their games are kept for AI research and lets you export them
+(`export-games`, or the telemetry listener on your own network); what you do with an
+export is up to you, so say so in your notice and make sure your players agree. Tell your
 players what you keep and for how long. `doctrine-server players disable` locks an
 account out; erasing a player's data completely is a manual database job (see
 [docs/OPERATING.md](docs/OPERATING.md)).

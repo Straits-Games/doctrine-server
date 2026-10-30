@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, auth, db, games
+from . import __version__, auth, db, games, research
 from .config import Config, ConfigError
 
 
@@ -67,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     b = sub.add_parser("backup", help="copy the database, turn files and scenarios to a new folder")
     b.add_argument("dest", help="destination folder (must not exist or be empty)")
     _common(b, suppress=True)
+
+    x = sub.add_parser("export-games",
+                       help="research mode: export game records for AI research")
+    x.add_argument("dest", help="destination folder (one subfolder per game)")
+    x.add_argument("--game", help="export only this game")
+    x.add_argument("--include-active", action="store_true",
+                   help="include games still in progress")
+    _common(x, suppress=True)
     return p
 
 
@@ -171,6 +179,26 @@ def cmd_backup(args, config: Config) -> int:
     return 0
 
 
+def cmd_export(args, config: Config) -> int:
+    if not config.research:
+        print("error: research mode is off (set DOCTRINE_RESEARCH=on, which also tells "
+              "players their games are kept for AI research)", file=sys.stderr)
+        return 2
+    conn = _open(config)
+    try:
+        result = research.export_games(conn, config.data_dir, Path(args.dest).resolve(),
+                                       config.server_name, game_id=args.game,
+                                       include_active=args.include_active)
+    finally:
+        conn.close()
+    for game_id in result["exported"]:
+        print(f"exported {game_id}")
+    for game_id, why in result["skipped"].items():
+        print(f"skipped {game_id}: {why}")
+    print(f"{len(result['exported'])} game(s) exported to {Path(args.dest).resolve()}")
+    return 1 if args.game and not result["exported"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cmd = args.cmd or "serve"
@@ -199,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "backup":
         return cmd_backup(args, config)
+    if cmd == "export-games":
+        return cmd_export(args, config)
 
     conn = _open(config)
     try:
