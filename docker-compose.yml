@@ -19,10 +19,14 @@ services:
       DOCTRINE_HOST: 0.0.0.0
       DOCTRINE_PORT: "8080"
       DOCTRINE_DATA_DIR: /data
+      # The telemetry listener (research mode, off unless DOCTRINE_RESEARCH_PORT is set).
+      DOCTRINE_RESEARCH_HOST: 0.0.0.0
     ports:
       # Plain HTTP. For internet play put HTTPS in front (see README) and change this
       # to "127.0.0.1:8080:8080" so only the proxy can reach it.
       - "8080:8080"
+      # Telemetry listener: publish it on your LAN address ONLY (docs/OPERATING.md).
+      # - "192.168.1.10:8081:8081"
     volumes:
       - doctrine-data:/data
 

@@ -110,6 +110,10 @@ MIGRATIONS: list[str] = [
         updated_at  INTEGER NOT NULL
     );
     """,
+    # v2 — the game build that uploaded each turn (research exports)
+    """
+    ALTER TABLE turns ADD COLUMN client_version TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

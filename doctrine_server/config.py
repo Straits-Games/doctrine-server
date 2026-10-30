@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Mapping
 
 
+DEFAULT_RESEARCH_NOTICE = (
+    "This server keeps a record of every game played on it, and its operator may use "
+    "those games, without player names, to help improve Doctrine's computer opponent.")
+RESEARCH_TOKEN_MIN = 16
+
+_TRUE = ("1", "true", "yes", "on")
+
+
 class ConfigError(Exception):
     """Raised when the configuration cannot work (the server refuses to start)."""
 
@@ -56,6 +64,14 @@ class Config:
     discord_channel_id: str = ""
     discord_games_category: str = ""
     discord_invite_url: str = ""
+    # Research mode: the server tells players it keeps game records for AI research;
+    # `export-games` and the telemetry listener (research_port, LAN only, bearer
+    # research_token) hand them out.
+    research: bool = False
+    research_notice: str = ""
+    research_host: str = "127.0.0.1"
+    research_port: int = 0
+    research_token: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
@@ -73,6 +89,10 @@ class Config:
     @property
     def bot_enabled(self) -> bool:
         return bool(self.discord_bot_token)
+
+    @property
+    def research_notice_text(self) -> str:
+        return self.research_notice or DEFAULT_RESEARCH_NOTICE
 
     @property
     def max_turn_bytes(self) -> int:
@@ -116,6 +136,15 @@ class Config:
             raise ConfigError("DOCTRINE_PORT must be between 1 and 65535")
         if self.max_turn_mb <= 0 or self.max_scenario_mb <= 0:
             raise ConfigError("upload caps must be positive")
+        if self.research_port:
+            if not self.research:
+                raise ConfigError("DOCTRINE_RESEARCH_PORT needs DOCTRINE_RESEARCH=on")
+            if not (0 < self.research_port < 65536) or self.research_port == self.port:
+                raise ConfigError("DOCTRINE_RESEARCH_PORT must be a free port other than "
+                                  "DOCTRINE_PORT")
+            if len(self.research_token) < RESEARCH_TOKEN_MIN:
+                raise ConfigError(f"DOCTRINE_RESEARCH_PORT needs DOCTRINE_RESEARCH_TOKEN "
+                                  f"(at least {RESEARCH_TOKEN_MIN} characters)")
         for name in ("discord_client_id", "discord_guild_id", "discord_channel_id"):
             value = getattr(self, name)
             if value and not value.isdigit():
@@ -162,4 +191,9 @@ class Config:
             discord_channel_id=get("DISCORD_CHANNEL_ID"),
             discord_games_category=get("DISCORD_GAMES_CATEGORY"),
             discord_invite_url=get("DISCORD_INVITE_URL"),
+            research=get("DOCTRINE_RESEARCH").lower() in _TRUE,
+            research_notice=get("DOCTRINE_RESEARCH_NOTICE"),
+            research_host=get("DOCTRINE_RESEARCH_HOST", "127.0.0.1") or "127.0.0.1",
+            research_port=num("DOCTRINE_RESEARCH_PORT", "0"),
+            research_token=get("DOCTRINE_RESEARCH_TOKEN"),
         )

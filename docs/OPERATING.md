@@ -62,6 +62,7 @@ database, so they also work while the server runs.
 | `games list [--all]` | active games (or all) |
 | `games close <game_id>` | ends a stuck or abandoned game (status `closed`) |
 | `backup <folder>` | see above |
+| `export-games <folder> [--game <id>] [--include-active]` | research mode: export game records (see below) |
 | `version` | print the version |
 
 If a display name matches several players (Discord names are not unique), use the id
@@ -78,6 +79,91 @@ DELETE FROM players WHERE id = '<id>';
 
 then delete the matching `blobs/<game_id>/` folders. Their opponents lose those games
 too, so consider `players disable` instead.
+
+## Research mode and the telemetry port
+
+Research mode lets the games played on your server help improve Doctrine's computer
+opponent. Turn it on only if your players have agreed to that.
+
+| variable | example | meaning |
+|---|---|---|
+| `DOCTRINE_RESEARCH` | `on` | research mode. `/server-info` and the sign-in page show the notice, and the game shows it on its Dedicated Server screen |
+| `DOCTRINE_RESEARCH_NOTICE` | (optional) | your own notice text; the default says games are kept and may be used, without player names, to improve the computer opponent |
+| `DOCTRINE_RESEARCH_PORT` | `8081` | the telemetry listener's port. `0` (the default) = no listener |
+| `DOCTRINE_RESEARCH_HOST` | `192.168.5.115` | the address it binds. Use the machine's address on your own network (or `0.0.0.0` inside Docker, with the port published on that address only) |
+| `DOCTRINE_RESEARCH_TOKEN` | 32+ random characters | required with a port. Make one with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+
+The server refuses to start with a port but no research mode, a token shorter than 16
+characters, or the same port as `DOCTRINE_PORT`.
+
+### What a game record is
+
+Each game's record holds its turn files (every move both players uploaded), a custom
+game's scenario bundle and a `game.json` with:
+- the scenario, seed, first side, status and result;
+- the game's passphrase, which decrypts its turn files;
+- the turn index: turn, uploader and recipient side, time, the game build that
+  uploaded it and the fog-safe summary.
+
+Players appear only as sides 0 and 1, with no names or ids. Games played before
+research mode was turned on are included: the server has always kept their turn files.
+
+### The telemetry listener
+
+A second, read-only web app on its own port. Every request needs
+`Authorization: Bearer <DOCTRINE_RESEARCH_TOKEN>`; the game never talks to it.
+
+| request | answer |
+|---|---|
+| `GET /research/healthz` | `{"ok": true, "version": "..."}` |
+| `GET /research/games[?include_active=1]` | `{"games": [...]}`: every finished, resigned or closed game (and those in progress with `include_active`), without passphrases |
+| `GET /research/games/<game_id>` | the game's full `game.json` |
+| `GET /research/games/<game_id>/bundle` | a zip of the game's record |
+
+**Keep it on your own network.** It hands out every game's passphrase, so:
+- bind it to the machine's LAN address, or publish it only on that address;
+- never add it to your reverse proxy (Caddy) or tunnel (Cloudflare);
+- if the machine has a firewall, allow the port from your LAN only.
+
+**Docker.** In `.env` set `DOCTRINE_RESEARCH=on`, `DOCTRINE_RESEARCH_PORT=8081` and
+the token. `docker-compose.yml` already sets `DOCTRINE_RESEARCH_HOST=0.0.0.0` inside
+the container; publish the port on the host's LAN address only by uncommenting its
+`ports` line and putting your address in:
+
+```yaml
+    ports:
+      - "8080:8080"
+      - "192.168.5.115:8081:8081"   # telemetry: this LAN address only
+```
+
+**systemd / plain Python.** Add the four variables to the env file, with
+`DOCTRINE_RESEARCH_HOST` set to the machine's LAN address, and restart. With ufw:
+
+```sh
+sudo ufw allow from 192.168.5.0/24 to any port 8081 proto tcp
+```
+
+**Check it** from another machine on the network:
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" http://192.168.5.115:8081/research/healthz
+curl -H "Authorization: Bearer $TOKEN" http://192.168.5.115:8081/research/games
+```
+
+Then give whoever analyses the games the listener's address and the token. Doctrine's
+`tools/` has the script that downloads and converts records.
+
+### `export-games`
+
+The same records as folders, without the listener:
+
+```sh
+doctrine-server export-games /path/to/folder                  # finished games
+doctrine-server export-games /path/to/folder --include-active # and games in progress
+doctrine-server export-games /path/to/folder --game rhine-a1b2c3
+```
+
+It needs research mode on. Running it again rewrites the folders.
 
 ## Logs
 

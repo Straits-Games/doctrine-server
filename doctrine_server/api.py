@@ -56,6 +56,8 @@ def server_info(request: Request):
             "motd": cfg.motd, "auth": cfg.auth_modes()}
     if cfg.discord_invite_url:
         info["discord_invite"] = cfg.discord_invite_url
+    if cfg.research:
+        info["research"] = {"notice": cfg.research_notice_text}
     return info
 
 

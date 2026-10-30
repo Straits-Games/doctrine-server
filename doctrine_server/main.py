@@ -131,5 +131,23 @@ def run(config: Config) -> None:
     import uvicorn
 
     app = create_app(config)
-    uvicorn.run(app, host=config.host, port=config.port, proxy_headers=True,
-                forwarded_allow_ips=config.forwarded_allow_ips, log_level="info")
+    if not config.research_port:
+        uvicorn.run(app, host=config.host, port=config.port, proxy_headers=True,
+                    forwarded_allow_ips=config.forwarded_allow_ips, log_level="info")
+        return
+    # Research mode's telemetry listener: a second, read-only app on its own port.
+    from .research_api import create_research_app
+    log.info("telemetry listener on %s:%d (research records, bearer token)",
+             config.research_host, config.research_port)
+    servers = [
+        uvicorn.Server(uvicorn.Config(app, host=config.host, port=config.port,
+                                      proxy_headers=True, log_level="info",
+                                      forwarded_allow_ips=config.forwarded_allow_ips)),
+        uvicorn.Server(uvicorn.Config(create_research_app(config), host=config.research_host,
+                                      port=config.research_port, log_level="info")),
+    ]
+
+    async def serve_all() -> None:
+        await asyncio.gather(*(s.serve() for s in servers))
+
+    asyncio.run(serve_all())
