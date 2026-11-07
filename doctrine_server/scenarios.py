@@ -1,7 +1,7 @@
 """Custom (Scenario Builder) maps: content-addressed storage + an id -> newest-sha index.
 
 Files live at `scenarios/<sha256>.hexscn`. Re-uploading an id points it at the new
-sha; old files are kept because games may reference them by sha.
+sha; old files are kept because games reference them by sha, and `bundle` serves them.
 """
 from __future__ import annotations
 
@@ -78,11 +78,23 @@ def store(conn: sqlite3.Connection, data_dir: Path, player_id: str, meta: dict,
             (scenario_id, name, actual, player_id, t))
 
 
-def bundle(conn: sqlite3.Connection, data_dir: Path, scenario_id: str) -> bytes | None:
-    meta = get_meta(conn, scenario_id)
-    if meta is None:
-        return None
+def bundle(conn: sqlite3.Connection, data_dir: Path, scenario_id: str,
+           sha: str | None = None) -> bytes | None:
+    """The newest upload for an id, or with `sha` that exact stored version.
+
+    A game is created against one version and the id can move on after that, so both
+    players ask for the game's own `scenario_sha256`.
+    """
+    if sha is None:
+        meta = get_meta(conn, scenario_id)
+        if meta is None:
+            return None
+        sha = meta["sha256"]
+    else:
+        sha = sha.strip().lower()
+        if not valid_id(scenario_id) or not file_exists(conn, sha):
+            return None
     try:
-        return file_path(data_dir, meta["sha256"]).read_bytes()
+        return file_path(data_dir, sha).read_bytes()
     except (FileNotFoundError, ValueError):
         return None

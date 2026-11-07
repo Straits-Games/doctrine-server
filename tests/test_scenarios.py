@@ -35,6 +35,46 @@ def test_reupload_points_at_newest_and_keeps_old(client, app, alice):
     assert f"{hashlib.sha256(b'v1').hexdigest()}.hexscn" in files
 
 
+def test_bundle_serves_a_specific_version(client, alice, bob):
+    def sha(data):
+        return hashlib.sha256(data).hexdigest()
+
+    def get(**params):
+        return client.get("/scenarios/my_map/bundle", headers=bob.h, params=params)
+
+    put(client, alice, "my_map", b"v1")
+    put(client, alice, "my_map", b"v2")
+    assert get(sha256=sha(b"v1")).content == b"v1"
+    assert get(sha256=sha(b"v1")).headers["x-hexfront-sha256"] == sha(b"v1")
+    assert get(sha256=sha(b"v2")).content == b"v2"
+    assert get().content == b"v2"                               # no hash: the newest, as before
+    assert get().headers["x-hexfront-sha256"] == sha(b"v2")
+    assert get(sha256=sha(b"v1").upper()).content == b"v1"
+    for bad in (sha(b"never uploaded"), "abc", "", "../../etc/passwd", "0" * 64):
+        r = get(sha256=bad)
+        assert r.status_code == 404 and r.json() == {"detail": "not_found"}, bad
+    r = client.get("/scenarios/my_map/bundle", params={"sha256": sha(b"v1")})
+    assert r.status_code == 401
+    r = client.get("/scenarios/..%2Fevil/bundle", headers=bob.h, params={"sha256": sha(b"v1")})
+    assert r.status_code == 404
+
+
+def test_game_keeps_its_version_when_the_map_is_edited(client, alice, bob):
+    """Issue tactics#783: the id moves on, the game and both players' download don't."""
+    v1, v2 = b"custom map v1", b"custom map v2"
+    sha1 = hashlib.sha256(v1).hexdigest()
+    put(client, alice, "custom_map", v1)
+    g = new_game(client, alice, bob, scenario_id="custom_map", custom=True, scenario_sha256=sha1)
+    put(client, alice, "custom_map", v2)
+    assert client.get("/scenarios/custom_map", headers=bob.h).json()["sha256"] == hashlib.sha256(v2).hexdigest()
+    for player in (alice, bob):
+        record = client.get(f"/games/{g['game_id']}", headers=player.h).json()
+        assert record["scenario_sha256"] == sha1
+        r = client.get("/scenarios/custom_map/bundle", headers=player.h,
+                       params={"sha256": record["scenario_sha256"]})
+        assert r.status_code == 200 and r.content == v1
+
+
 def test_upload_validation(client, app, alice):
     r = put(client, alice, "my_map", b"data", sha="0" * 64)
     assert r.status_code == 400 and r.json() == {"detail": "sha_mismatch"}

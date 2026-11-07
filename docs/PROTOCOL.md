@@ -87,6 +87,8 @@ every non-disabled player (the caller included). The client sorts.
 - `turn` increments once per **full round**; `0` is the setup/deployment phase. A game
   created with `has_setup: false` has no turn 0.
 - `channel_id`: the Discord channel of the game, `""` if none.
+- `scenario_sha256`: for a custom map, the version the game was created with. It doesn't
+  change when the map's id is uploaded again.
 - `passphrase` (24 URL-safe characters, encrypts the turn files) is included **only**
   in the responses of `POST /games` and `GET /games/{id}`.
 - `your_turn` is true when the game is active and either `active_side == your_side`,
@@ -211,8 +213,17 @@ Active game: `status = finished`. Already over: no change (the first report wins
 `too_large`). Files are stored by content hash; re-uploading an id points it at the
 newest file (older files are kept for games that reference them). **200** `{"ok": true}`.
 
-### `GET /scenarios/{scenario_id}/bundle` (auth)
-**200** the newest bundle for that id; **404** `not_found`.
+### `GET /scenarios/{scenario_id}/bundle[?sha256=<hex>]` (auth)
+**200** the newest bundle for that id. With `sha256` (server 0.4.0+, any case), that exact
+stored version: this is how a player gets the map a game was created with, its
+`scenario_sha256`, after the id has moved on to a newer upload. **404** `not_found` if the
+id has no upload, or `sha256` isn't a stored version.
+
+The `X-Hexfront-Sha256` response header (server 0.4.0+) is the hash of the bundle sent. A
+server older than 0.4.0 ignores `sha256` and sends the newest bundle without that header,
+so a client that asks for a version has to hash what it receives. A different hash with
+no header means an older server that can't serve that version; with the header, a damaged
+download.
 
 ## Misc
 

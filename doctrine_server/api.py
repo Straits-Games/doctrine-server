@@ -5,6 +5,7 @@ notifications after the change is committed.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any
 
@@ -195,10 +196,11 @@ def scenario_upload(request: Request, meta: str = Form(...), file: UploadFile = 
 
 
 @router.get("/scenarios/{scenario_id}/bundle")
-def scenario_bundle(scenario_id: str, request: Request, player=Depends(current_player),
-                    conn=Depends(get_conn)):
-    data = scenarios.bundle(conn, request.app.state.data_dir, scenario_id)
+def scenario_bundle(scenario_id: str, request: Request, sha256: str | None = None,
+                    player=Depends(current_player), conn=Depends(get_conn)):
+    data = scenarios.bundle(conn, request.app.state.data_dir, scenario_id, sha256)
     if data is None:
         raise ApiError(404, "not_found")
     return Response(content=data, media_type="application/octet-stream",
-                    headers={"Content-Disposition": f'attachment; filename="{scenario_id}.hexscn"'})
+                    headers={"Content-Disposition": f'attachment; filename="{scenario_id}.hexscn"',
+                             "X-Hexfront-Sha256": hashlib.sha256(data).hexdigest()})
