@@ -27,6 +27,21 @@ def test_create_game_options(client, alice, bob):
     assert g["first_side"] == 1 and g["active_side"] == 0 and g["scenario_name"] == "Night Drop"
 
 
+def test_create_game_seed_follows_has_setup(client, alice, bob):
+    """Both menus name the right player from creation, whichever side moves first."""
+    for first_side in (0, 1):
+        g = new_game(client, alice, bob, my_side=0, first_side=first_side, has_setup=False)
+        mover, other = (alice, bob) if first_side == 0 else (bob, alice)
+        assert g["turn"] == 1 and g["active_side"] == first_side
+        assert game_of(client, mover, g["game_id"])["your_turn"] is True
+        assert game_of(client, other, g["game_id"])["your_turn"] is False
+        assert set(g) == GAME_KEYS | {"passphrase"}
+        # an explicit true, or anything that isn't false, is the setup seed
+        for flag in (True, None, 0, "false"):
+            g = new_game(client, alice, bob, my_side=0, first_side=first_side, has_setup=flag)
+            assert g["turn"] == 0 and g["active_side"] == 1 - first_side, flag
+
+
 def test_create_game_validation(client, alice, bob, app):
     def post(**body):
         base = {"scenario_id": "rhine", "opponent_uid": bob.id, "my_side": 0}
