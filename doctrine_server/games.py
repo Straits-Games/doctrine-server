@@ -11,6 +11,11 @@ The rules below exist because an earlier server deadlocked in three ways:
      downloaded (turn-0 files addressed to the side to move are re-delivered);
   3. it bumped the uploader's download cursor on upload, so a reply carrying the
      same turn number was never delivered (cursors now move on DOWNLOAD only).
+
+A map with no deployment phase has no turn 0: the client opens it at turn 1 with
+`first_side` to move, and says so with `has_setup: false` when creating the game. Clients
+and games from before that flag are seeded as if there were a setup phase, which
+deadlocked: `first_side` was refused its first upload (see `_first_move_waived`).
 """
 from __future__ import annotations
 
@@ -123,7 +128,8 @@ def your_turn(conn: sqlite3.Connection, game: sqlite3.Row, side: int) -> bool:
 
     Normally: the game is active and it is that side's move. During setup (turn 0) a
     side that has not uploaded its own setup yet may also act if it is the first
-    placer (1 - first_side) or a setup file addressed to it already exists.
+    placer (1 - first_side) or a setup file addressed to it already exists. A game
+    created with `has_setup: false` starts at turn 1, so this rule never applies to it.
     """
     if game["status"] != "active":
         return False
@@ -228,6 +234,10 @@ def create_game(conn: sqlite3.Connection, caller_id: str, body: dict) -> sqlite3
         if not scenarios.file_exists(conn, sha):
             raise ApiError(400, "scenario_missing")
     name = _clean_text(body.get("scenario_name"), 64) or default_scenario_name(scenario_id)
+    # Only an explicit false means no setup: clients that predate the flag omit it.
+    has_setup = body.get("has_setup") is not False
+    start_turn = 0 if has_setup else 1
+    start_side = 1 - first_side if has_setup else first_side   # setup is defender-first
 
     players = {my_side: caller_id, 1 - my_side: opponent.id}
     t = auth.now()
@@ -239,9 +249,9 @@ def create_game(conn: sqlite3.Connection, caller_id: str, body: dict) -> sqlite3
                 "INSERT INTO games (game_id, scenario_id, scenario_name, first_side, player0,"
                 " player1, status, active_side, turn, winner, passphrase, rng_seed, custom,"
                 " scenario_sha256, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 0, -1, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, -1, ?, ?, ?, ?, ?, ?)",
                 (game_id, scenario_id, name, first_side, players[0], players[1],
-                 1 - first_side,                      # setup is defender-first
+                 start_side, start_turn,
                  secrets.token_urlsafe(18)[:24],      # 24 urlsafe chars
                  secrets.randbelow(2 ** 31 - 1) + 1,  # nonzero 31-bit seed
                  int(custom), sha if scenarios.valid_sha(sha) else "", t, t))
@@ -289,6 +299,18 @@ def parse_meta(raw) -> dict:
     return meta
 
 
+def _first_move_waived(conn: sqlite3.Connection, game: sqlite3.Row, side: int) -> bool:
+    """`first_side` opening a no-setup map in a game seeded as if it had a setup phase.
+
+    True while the game is at turn 0 and nobody has uploaded a setup file. Such a game
+    was created without `has_setup: false` (by an older client, or before the flag
+    existed), so its seed names the wrong side. On a map with setup the first mover
+    can't reach this: it needs the other side's setup file before it can play a turn.
+    """
+    return (game["turn"] == 0 and side == game["first_side"]
+            and not _has_blob(conn, game["game_id"], 0))
+
+
 def upload_turn(conn: sqlite3.Connection, data_dir: Path, game_id: str, player_id: str,
                 meta: dict, data: bytes, filename: str) -> dict:
     turn = _int_value(meta.get("turn"))
@@ -306,7 +328,7 @@ def upload_turn(conn: sqlite3.Connection, data_dir: Path, game_id: str, player_i
         if new_active != 1 - side:
             raise ApiError(400, "bad_active_side")
         # 2. after setup you may only upload on your own move (turn 0 is exempt)
-        if turn >= 1 and game["active_side"] != side:
+        if turn >= 1 and game["active_side"] != side and not _first_move_waived(conn, game, side):
             raise ApiError(409, "out_of_turn")
         recipient = 1 - side
         # 3. one file per (turn, uploader side)

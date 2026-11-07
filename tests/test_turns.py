@@ -1,5 +1,5 @@
-"""The turn relay. The four `test_regression_*` tests pin the three deadlocks the old
-server had plus a whole game; keep them."""
+"""The turn relay. The `test_regression_*` tests pin the deadlocks the server has had
+plus a whole game; keep them."""
 from conftest import download, game_of, new_game, upload
 
 from doctrine_server import db, games
@@ -139,6 +139,77 @@ def test_regression_d_full_game_flow(client, app, alice, bob):
     assert r.status_code == 200 and r.json()["winner"] == 0
     assert not your_turn(alice) and not your_turn(bob)
     assert upload(client, bob, gid, 4, 0).json() == {"detail": "not_active"}
+
+
+def _play_no_setup_rounds(client, gid, mover, other, first_side, *, check_opening_menus=True):
+    """Two full rounds, numbered as the client numbers them on a map with no setup: the
+    engine opens at turn 1, and the round's second mover uploads the incremented turn."""
+    second_side = 1 - first_side
+    sends = [(mover, other, 1, second_side), (other, mover, 2, first_side),
+             (mover, other, 2, second_side), (other, mover, 3, first_side)]
+    for index, (sender, receiver, turn, recipient) in enumerate(sends):
+        if check_opening_menus or index > 0:
+            assert game_of(client, sender, gid)["your_turn"] is True, (index, turn)
+            assert game_of(client, receiver, gid)["your_turn"] is False, (index, turn)
+        assert download(client, receiver, gid).status_code == 204     # nothing early
+        payload = f"{sender.name} turn {turn}".encode()
+        r = upload(client, sender, gid, turn, recipient, data=payload)
+        assert r.status_code == 200, (index, turn, r.text)
+        assert r.json()["active_side"] == recipient
+        assert download(client, sender, gid).status_code == 204       # the sender waits
+        got = _ok(download(client, receiver, gid), turn=turn)
+        assert got.content == payload
+        assert got.headers["x-hexfront-side"] == str(recipient)
+    assert game_of(client, mover, gid)["turn"] == 3
+
+
+def test_regression_e_no_setup_map_plays_full_rounds(client, alice, bob):
+    """Deadlock #4: a map with no deployment phase opens at turn 1 with first_side to move.
+    The server assumed a setup phase, so it named the other side and answered first_side's
+    first upload with 409 out_of_turn, while the other side's poll stayed at 204."""
+    for first_side in (0, 1):
+        g = new_game(client, alice, bob, my_side=0, first_side=first_side, has_setup=False)
+        assert g["turn"] == 1 and g["active_side"] == first_side
+        mover, other = (alice, bob) if first_side == 0 else (bob, alice)
+        _play_no_setup_rounds(client, g["game_id"], mover, other, first_side)
+
+
+def test_regression_e2_no_setup_unflagged_game_is_playable(client, alice, bob):
+    """The same map from a client that doesn't send has_setup, or a game stuck since before
+    the flag: seeded for a setup phase, but first_side's opening upload is accepted. The
+    menus can't be right until then: nothing yet tells this game from one with setup."""
+    for first_side in (0, 1):
+        g = new_game(client, alice, bob, my_side=0, first_side=first_side)
+        assert g["turn"] == 0 and g["active_side"] == 1 - first_side
+        mover, other = (alice, bob) if first_side == 0 else (bob, alice)
+        _play_no_setup_rounds(client, g["game_id"], mover, other, first_side,
+                              check_opening_menus=False)
+
+
+def test_first_move_waiver_is_narrow(client, alice, bob):
+    def fresh(first_side=0):
+        return new_game(client, alice, bob, my_side=0, first_side=first_side)["game_id"]
+
+    # with a setup file on the server the game has a setup phase: no waiver, either way round
+    gid = fresh()
+    upload(client, alice, gid, 0, 1)                             # attacker sealed first
+    assert upload(client, alice, gid, 1, 1).json() == {"detail": "out_of_turn"}
+    gid = fresh()
+    upload(client, bob, gid, 0, 0)                               # defender placed
+    assert upload(client, bob, gid, 1, 0).json() == {"detail": "out_of_turn"}
+    assert upload(client, alice, gid, 1, 1).status_code == 200   # the normal flow
+    # it spends itself: first_side can't upload again until the reply
+    gid = fresh()
+    assert upload(client, alice, gid, 1, 1).status_code == 200
+    assert upload(client, alice, gid, 2, 1).json() == {"detail": "out_of_turn"}
+    assert game_of(client, alice, gid)["your_turn"] is False
+    # it doesn't relax the other turn rules
+    gid = fresh()
+    assert upload(client, alice, gid, 1, 0).json() == {"detail": "bad_active_side"}
+    # setup maps keep their turn-0 flow from a fresh game
+    gid = fresh(first_side=1)
+    assert upload(client, alice, gid, 0, 1).status_code == 200   # alice defends and places first
+    assert game_of(client, bob, gid)["your_turn"] is True
 
 
 # ------------------------------------------------------------- upload rules

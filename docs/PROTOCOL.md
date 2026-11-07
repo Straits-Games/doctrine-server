@@ -84,7 +84,8 @@ every non-disabled player (the caller included). The client sorts.
 ```
 - `status`: `active` | `resigned` | `finished` | `closed` (closed = by an admin).
 - `winner`: `0`, `1`, or `-1` while undecided.
-- `turn` increments once per **full round**; `0` is the setup/deployment phase.
+- `turn` increments once per **full round**; `0` is the setup/deployment phase. A game
+  created with `has_setup: false` has no turn 0.
 - `channel_id`: the Discord channel of the game, `""` if none.
 - `passphrase` (24 URL-safe characters, encrypts the turn files) is included **only**
   in the responses of `POST /games` and `GET /games/{id}`.
@@ -96,10 +97,12 @@ every non-disabled player (the caller included). The client sorts.
 Body:
 ```json
 {"scenario_id": "rhine", "opponent_uid": "<id>", "my_side": 0,
- "first_side": 0, "scenario_name": "Rhine", "custom": false, "scenario_sha256": "<hex>"}
+ "first_side": 0, "scenario_name": "Rhine", "custom": false, "scenario_sha256": "<hex>",
+ "has_setup": false}
 ```
 `first_side` (default 0), `scenario_name` (default: the id title-cased, `_`/`-` as
-spaces), `custom` and `scenario_sha256` are optional. Any well-formed scenario id is
+spaces), `custom`, `scenario_sha256` and `has_setup` (server 0.3.0+, default true) are
+optional. Only an explicit `false` turns setup off. Any well-formed scenario id is
 accepted (there is no allowlist; new maps need no server update).
 
 | status | detail | when |
@@ -111,7 +114,9 @@ accepted (there is no allowlist; new maps need no server update).
 
 **200**: the game object with `passphrase`. A new game starts at `turn` 0 with
 `active_side = 1 - first_side` (the defender deploys first), a random nonzero 31-bit
-`rng_seed` and a random passphrase.
+`rng_seed` and a random passphrase. With `has_setup: false` (a map with no deployment
+phase) it starts at `turn` 1 with `active_side = first_side`, which is where the client
+opens such a map.
 
 ### `GET /games` (auth)
 **200** `{"games": [ ... ]}` — the caller's games, all statuses, most recently updated
@@ -144,9 +149,20 @@ First the request itself is checked: **413** `too_large` (file above
 | 3 | 409 | `duplicate_turn` | you already uploaded a file for this turn number |
 | 4 | 400 | `stale_turn` | `turn < 0` or `turn < game.turn - 1` |
 
+Rule 2 has one more exception (server 0.3.0+): `first_side` may upload a `turn >= 1` file
+while the game is at `turn` 0 and has no turn-0 file. That is a no-setup map in a game
+created without `has_setup: false`, whose seed wrongly names the other side. `your_turn`
+can't tell these games from ones with a setup phase, so it follows the seed until that
+first upload.
+
 Then the file is stored for the recipient, `active_side = meta.active_side`,
 `turn = max(turn, meta.turn)`. Uploading never changes any download cursor.
 **200** `{"ok": true, "turn": <game turn>, "active_side": <side>}`.
+
+Because rule 2 runs first, re-sending a file the server already holds usually gets
+`out_of_turn`, not `duplicate_turn`: `duplicate_turn` appears only once the move has come
+back to you, or on turn 0. A client retrying after a lost response should read the game
+object to tell whether its file arrived.
 
 ### `GET /games/{game_id}/turn[?since=N]` (auth, participant) — download
 Returns the file addressed to the caller:
